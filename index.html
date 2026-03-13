@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Calcolatore Rettangolo</title>
+  <script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <!-- AUTH SECTION -->
+  <div id="auth-section" class="container hidden">
+    <div class="card">
+      <div class="logo">
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+          <rect x="4" y="12" width="40" height="24" rx="3" stroke="#6366f1" stroke-width="3" fill="none"/>
+          <line x1="4" y1="24" x2="44" y2="24" stroke="#6366f1" stroke-width="2" stroke-dasharray="4 3"/>
+          <line x1="24" y1="12" x2="24" y2="36" stroke="#6366f1" stroke-width="2" stroke-dasharray="4 3"/>
+        </svg>
+      </div>
+      <h1>Calcolatore Rettangolo</h1>
+      <p class="subtitle">Accedi o registrati per utilizzare il calcolatore</p>
+
+      <div class="auth-tabs">
+        <button class="tab-btn active" id="login-tab" onclick="showTab('login')">Accedi</button>
+        <button class="tab-btn" id="register-tab" onclick="showTab('register')">Registrati</button>
+      </div>
+
+      <!-- LOGIN FORM -->
+      <form id="login-form" class="auth-form" onsubmit="handleLogin(event)">
+        <div class="form-group">
+          <label for="login-email">Email</label>
+          <input type="email" id="login-email" placeholder="tua@email.com" required />
+        </div>
+        <div class="form-group">
+          <label for="login-password">Password</label>
+          <input type="password" id="login-password" placeholder="••••••••" required />
+        </div>
+        <div id="login-error" class="error-msg hidden"></div>
+        <button type="submit" class="btn-primary" id="login-btn">
+          <span class="btn-text">Accedi</span>
+          <span class="btn-loader hidden">Caricamento...</span>
+        </button>
+      </form>
+
+      <!-- REGISTER FORM -->
+      <form id="register-form" class="auth-form hidden" onsubmit="handleRegister(event)">
+        <div class="form-group">
+          <label for="register-name">Nome</label>
+          <input type="text" id="register-name" placeholder="Mario Rossi" required />
+        </div>
+        <div class="form-group">
+          <label for="register-email">Email</label>
+          <input type="email" id="register-email" placeholder="tua@email.com" required />
+        </div>
+        <div class="form-group">
+          <label for="register-password">Password</label>
+          <input type="password" id="register-password" placeholder="Min. 8 caratteri" minlength="8" required />
+        </div>
+        <div class="form-group">
+          <label for="register-confirm">Conferma Password</label>
+          <input type="password" id="register-confirm" placeholder="Ripeti la password" required />
+        </div>
+        <div id="register-error" class="error-msg hidden"></div>
+        <div id="register-success" class="success-msg hidden"></div>
+        <button type="submit" class="btn-primary" id="register-btn">
+          <span class="btn-text">Registrati</span>
+          <span class="btn-loader hidden">Caricamento...</span>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- CALCULATOR SECTION -->
+  <div id="app-section" class="container hidden">
+    <div class="topbar">
+      <div class="topbar-brand">
+        <svg width="28" height="28" viewBox="0 0 48 48" fill="none">
+          <rect x="4" y="12" width="40" height="24" rx="3" stroke="#6366f1" stroke-width="3" fill="none"/>
+          <line x1="4" y1="24" x2="44" y2="24" stroke="#6366f1" stroke-width="2" stroke-dasharray="4 3"/>
+          <line x1="24" y1="12" x2="24" y2="36" stroke="#6366f1" stroke-width="2" stroke-dasharray="4 3"/>
+        </svg>
+        <span>Calcolatore Rettangolo</span>
+      </div>
+      <div class="topbar-user">
+        <span id="user-name"></span>
+        <button class="btn-logout" onclick="handleLogout()">Esci</button>
+      </div>
+    </div>
+
+    <div class="main-content">
+      <div class="card calc-card">
+        <h2>Calcola l'area</h2>
+        <p class="subtitle">Inserisci le dimensioni del rettangolo</p>
+
+        <div class="rectangle-preview">
+          <div class="rect-visual" id="rect-visual">
+            <span class="rect-label-w" id="label-width">—</span>
+            <span class="rect-label-h" id="label-height">—</span>
+          </div>
+        </div>
+
+        <form id="calc-form" onsubmit="handleCalculate(event)">
+          <div class="inputs-row">
+            <div class="form-group">
+              <label for="width">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M1 7h12M1 7l3-3M1 7l3 3M13 7l-3-3M13 7l-3 3" stroke="#6366f1" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+                Larghezza
+              </label>
+              <div class="input-with-unit">
+                <input type="number" id="width" placeholder="0" min="0.01" step="any" required oninput="updatePreview()" />
+                <span class="unit">cm</span>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="height">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M7 1v12M7 1L4 4M7 1l3 3M7 13L4 10M7 13l3-3" stroke="#6366f1" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+                Altezza
+              </label>
+              <div class="input-with-unit">
+                <input type="number" id="height" placeholder="0" min="0.01" step="any" required oninput="updatePreview()" />
+                <span class="unit">cm</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="unit-selector">
+            <label>Unità di misura:</label>
+            <div class="unit-buttons">
+              <button type="button" class="unit-btn active" data-unit="cm" onclick="setUnit(this, 'cm')">cm</button>
+              <button type="button" class="unit-btn" data-unit="m" onclick="setUnit(this, 'm')">m</button>
+              <button type="button" class="unit-btn" data-unit="mm" onclick="setUnit(this, 'mm')">mm</button>
+              <button type="button" class="unit-btn" data-unit="in" onclick="setUnit(this, 'in')">in</button>
+            </div>
+          </div>
+
+          <button type="submit" class="btn-primary btn-calc">Calcola Area</button>
+        </form>
+
+        <div id="result-box" class="result-box hidden">
+          <div class="result-label">Area del rettangolo</div>
+          <div class="result-value" id="result-value"></div>
+          <div class="result-details" id="result-details"></div>
+        </div>
+      </div>
+
+      <div class="card history-card">
+        <h3>Calcoli recenti</h3>
+        <div id="history-list" class="history-list">
+          <p class="empty-history">Nessun calcolo ancora.</p>
+        </div>
+        <button class="btn-ghost" id="clear-history-btn" onclick="clearHistory()" style="display:none">
+          Cancella cronologia
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- LOADING OVERLAY -->
+  <div id="loading-overlay" class="loading-overlay">
+    <div class="spinner"></div>
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
