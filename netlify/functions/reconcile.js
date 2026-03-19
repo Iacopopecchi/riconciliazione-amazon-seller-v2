@@ -99,6 +99,13 @@ exports.handler = async (event) => {
       mese_target:    meseTarget,
       status_globale: statusGlobale,
       warnings,
+      _debug: {
+        csv_headers:   targetRows._headers || [],
+        csv_separator: targetRows._sep     || '?',
+        csv_row_count: targetRows.length,
+        csv_first_row: targetRows._firstRow || '',
+        pdf_keys_found: Object.entries(pdfSum).filter(([,v]) => v !== null).map(([k]) => k),
+      },
       checks,
       saldo_residuo: {
         importo:       saldo,
@@ -179,34 +186,66 @@ function fmtDate(d) {
 function parseAmazonCsv(buf) {
   let text = buf.toString('utf-8');
   if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1); // Remove BOM
+  // Fallback: try latin-1 if utf-8 looks wrong
+  if (!text.includes('\t') && !text.includes(',')) {
+    text = buf.toString('latin1');
+    if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  }
 
   const lines = text.split(/\r?\n/);
   if (lines.length < 9) throw new Error(`CSV troppo corto (${lines.length} righe).`);
 
   const hLine = lines[7];
-  const sep   = hLine.includes('\t') ? '\t' : ',';
-  const headers = hLine.split(sep).map(h => h.trim());
+  // Detect separator: tab > semicolon > comma
+  const sep = hLine.includes('\t') ? '\t'
+            : hLine.includes(';')  ? ';'
+            : ',';
 
-  const dateCol = headers.find(h => h.toLowerCase() === 'data' || h.toLowerCase() === 'date');
+  const rawHeaders = hLine.split(sep).map(h => h.trim().replace(/^"(.*)"$/, '$1'));
+
+  // Case-insensitive index lookup: lowercase_name -> column_index
+  const hIdx = {};
+  rawHeaders.forEach((h, i) => { hIdx[h.toLowerCase()] = i; });
+
+  // Get raw string value from a row by column name (case-insensitive)
+  function col(vals, name) {
+    const i = hIdx[name.toLowerCase()];
+    return i !== undefined ? (vals[i] ?? '').trim().replace(/^"(.*)"$/, '$1') : '';
+  }
+
   const rows = [];
 
   for (let i = 8; i < lines.length; i++) {
     if (!lines[i].trim()) continue;
     const vals = lines[i].split(sep);
-    const row  = {};
-    headers.forEach((h, j) => { row[h] = (vals[j] ?? '').trim(); });
 
-    NUMERIC_COLS.forEach(c => { row[c] = c in row ? parseItNum(row[c]) : 0; });
+    const row = {};
 
-    if (dateCol) {
-      row._date    = parseItDate(row[dateCol]);
-      row._dateStr = row[dateCol];
-    }
-    if ('Numero pagamento' in row) {
-      row['Numero pagamento'] = String(row['Numero pagamento']).split('.')[0].trim();
-    }
+    // Store all raw values by original header (for transactions table)
+    rawHeaders.forEach((h, j) => { row[h] = (vals[j] ?? '').trim().replace(/^"(.*)"$/, '$1'); });
+
+    // Parse numeric columns case-insensitively
+    NUMERIC_COLS.forEach(c => { row[c] = parseItNum(col(vals, c)); });
+
+    // Key text columns (case-insensitive lookup, stored under canonical name)
+    row['Tipo']             = col(vals, 'Tipo');
+    row['Descrizione']      = col(vals, 'Descrizione');
+    row['Numero ordine']    = col(vals, 'Numero ordine');
+    row['Numero pagamento'] = String(col(vals, 'Numero pagamento')).split('.')[0].trim();
+
+    // Date
+    const dateVal = col(vals, 'Data') || col(vals, 'Date');
+    row._date    = parseItDate(dateVal);
+    row._dateStr = dateVal;
+
     rows.push(row);
   }
+
+  // Attach debug info on the array itself (useful for troubleshooting)
+  rows._headers   = rawHeaders;
+  rows._sep       = sep;
+  rows._firstRow  = rows[0] ? JSON.stringify(rows[0]).slice(0, 300) : '';
+
   return rows;
 }
 
