@@ -23,6 +23,29 @@ const NUMERIC_COLS = [
   'Commissioni di vendita', 'Altri costi relativi alle transazioni',
   'Altro', 'totale',
 ];
+
+// Alternative column names for each canonical column (case-insensitive lookup)
+const COL_ALIASES = {
+  'vendite': [
+    'vendite', 'ricavi vendite', 'ricavi', 'ricavo',
+    'ricavi prodotto', 'importo vendite', 'vendite prodotto',
+    'product sales', 'sales',
+  ],
+  'imposta sulle vendite dei prodotti': [
+    'imposta sulle vendite dei prodotti', 'imposta sulle vendite',
+    'iva', 'imposta', 'tax', 'sales tax',
+  ],
+  'commissioni di vendita': [
+    'commissioni di vendita', 'commissioni', 'commissione',
+    'selling fees', 'importo commissioni',
+  ],
+  'altri costi relativi alle transazioni': [
+    'altri costi relativi alle transazioni', 'altri costi transazione',
+    'altri costi', 'other transaction fees',
+  ],
+  'altro': ['altro', 'altri', 'varie', 'other'],
+  'totale': ['totale', 'total', 'importo totale', 'netto', 'net'],
+};
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -100,11 +123,12 @@ exports.handler = async (event) => {
       status_globale: statusGlobale,
       warnings,
       _debug: {
-        csv_headers:   targetRows._headers || [],
-        csv_separator: targetRows._sep     || '?',
-        csv_row_count: targetRows.length,
-        csv_first_row: targetRows._firstRow || '',
-        pdf_keys_found: Object.entries(pdfSum).filter(([,v]) => v !== null).map(([k]) => k),
+        csv_headers:      targetRows._headers     || [],
+        csv_separator:    targetRows._sep         || '?',
+        csv_row_count:    targetRows.length,
+        csv_col_resolved: targetRows._colResolved || {},
+        pdf_keys_found:   Object.entries(pdfSum).filter(([,v]) => v !== null).map(([k]) => k),
+        pdf_raw_values:   pdfSum,
       },
       checks,
       saldo_residuo: {
@@ -207,9 +231,30 @@ function parseAmazonCsv(buf) {
   const hIdx = {};
   rawHeaders.forEach((h, i) => { hIdx[h.toLowerCase()] = i; });
 
-  // Get raw string value from a row by column name (case-insensitive)
+  // Resolve column index: try canonical name first, then aliases
+  function resolveIdx(name) {
+    const direct = hIdx[name.toLowerCase()];
+    if (direct !== undefined) return direct;
+    const aliases = COL_ALIASES[name.toLowerCase()] || [];
+    for (const a of aliases) {
+      const idx = hIdx[a.toLowerCase()];
+      if (idx !== undefined) return idx;
+    }
+    return undefined;
+  }
+
+  // Build final index map for NUMERIC_COLS once
+  const numIdx = {};
+  const colResolved = {}; // canonical -> actual header name (for debug)
+  NUMERIC_COLS.forEach(c => {
+    const idx = resolveIdx(c);
+    numIdx[c] = idx;
+    colResolved[c] = idx !== undefined ? rawHeaders[idx] : null;
+  });
+
+  // Get raw string value from a row by column name (case-insensitive + aliases)
   function col(vals, name) {
-    const i = hIdx[name.toLowerCase()];
+    const i = resolveIdx(name);
     return i !== undefined ? (vals[i] ?? '').trim().replace(/^"(.*)"$/, '$1') : '';
   }
 
@@ -242,9 +287,10 @@ function parseAmazonCsv(buf) {
   }
 
   // Attach debug info on the array itself (useful for troubleshooting)
-  rows._headers   = rawHeaders;
-  rows._sep       = sep;
-  rows._firstRow  = rows[0] ? JSON.stringify(rows[0]).slice(0, 300) : '';
+  rows._headers     = rawHeaders;
+  rows._sep         = sep;
+  rows._colResolved = colResolved; // canonical -> actual CSV header
+  rows._firstRow    = rows[0] ? JSON.stringify(rows[0]).slice(0, 300) : '';
 
   return rows;
 }

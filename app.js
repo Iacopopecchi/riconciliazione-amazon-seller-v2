@@ -209,6 +209,40 @@ function renderResults(data) {
   allTransactions = data.transazioni || [];
   renderTransactions(allTransactions);
   populateFilters(allTransactions);
+
+  // Debug panel
+  renderDebug(data._debug);
+}
+
+function renderDebug(dbg) {
+  let el = document.getElementById('debug-panel');
+  if (!el) {
+    el = document.createElement('details');
+    el.id = 'debug-panel';
+    el.style.cssText = 'margin:1rem 0;font-size:.78rem;color:#666;background:#f9f9f9;border:1px solid #ddd;border-radius:6px;padding:.75rem 1rem';
+    const resultsEl = document.getElementById('results') || document.body;
+    resultsEl.appendChild(el);
+  }
+  if (!dbg) { el.hidden = true; return; }
+
+  const resolved = dbg.csv_col_resolved || {};
+  const colRows = Object.entries(resolved).map(([canonical, actual]) =>
+    `<tr><td style="color:#888;padding:1px 8px 1px 0">${canonical}</td><td style="font-weight:${actual ? 700 : 400};color:${actual ? '#1a7a1a' : '#c00'}">${actual || '❌ NON TROVATA'}</td></tr>`
+  ).join('');
+
+  el.innerHTML = `
+    <summary style="cursor:pointer;font-weight:700;color:#555">🔍 Debug info (CSV + PDF)</summary>
+    <div style="margin-top:.5rem">
+      <b>Separatore CSV:</b> <code>${dbg.csv_separator === '\t' ? 'TAB' : dbg.csv_separator}</code>
+      &nbsp;|&nbsp; <b>Righe lette:</b> ${dbg.csv_row_count}<br><br>
+      <b>Intestazioni CSV trovate:</b><br>
+      <code style="font-size:.72rem">${(dbg.csv_headers || []).join(' | ')}</code><br><br>
+      <b>Mappatura colonne numeriche:</b><br>
+      <table>${colRows}</table><br>
+      <b>PDF – valori estratti:</b><br>
+      <code>${JSON.stringify(dbg.pdf_raw_values)}</code><br>
+    </div>`;
+  el.hidden = false;
 }
 
 function renderCheck(key, check) {
