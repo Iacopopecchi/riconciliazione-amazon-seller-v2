@@ -3,93 +3,259 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Calcolatore Rettangolo</title>
-  <link rel="stylesheet" href="css/style.css" />
+  <title>Amazon Reconciliation — CafèNoirOfficial</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
-  <div class="topbar">
-    <div class="topbar-brand">
-      <svg width="28" height="28" viewBox="0 0 48 48" fill="none">
-        <rect x="4" y="12" width="40" height="24" rx="3" stroke="#6366f1" stroke-width="3" fill="none"/>
-        <line x1="4" y1="24" x2="44" y2="24" stroke="#6366f1" stroke-width="2" stroke-dasharray="4 3"/>
-        <line x1="24" y1="12" x2="24" y2="36" stroke="#6366f1" stroke-width="2" stroke-dasharray="4 3"/>
+<!-- ═══════════════════════════════════════════════════════════════════
+     HEADER
+═══════════════════════════════════════════════════════════════════ -->
+<header class="site-header">
+  <div class="header-inner">
+    <div class="header-brand">
+      <svg class="header-logo" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="2" y="8" width="36" height="24" rx="3" fill="#FF9900" opacity=".9"/>
+        <rect x="6" y="12" width="10" height="10" rx="1" fill="#232F3E"/>
+        <rect x="20" y="12" width="14" height="2" rx="1" fill="#232F3E"/>
+        <rect x="20" y="17" width="10" height="2" rx="1" fill="#232F3E"/>
+        <rect x="6" y="25" width="28" height="2" rx="1" fill="#232F3E" opacity=".4"/>
       </svg>
-      <span>Calcolatore Rettangolo</span>
+      <div>
+        <div class="header-title">Amazon Reconciliation</div>
+        <div class="header-subtitle">CafèNoirOfficial · Seller Central</div>
+      </div>
     </div>
   </div>
+</header>
 
-  <div class="main-content">
-    <div class="card calc-card">
-      <h2>Calcola l'area</h2>
-      <p class="subtitle">Inserisci le dimensioni del rettangolo</p>
+<!-- ═══════════════════════════════════════════════════════════════════
+     VIEW 1 — UPLOAD
+═══════════════════════════════════════════════════════════════════ -->
+<main id="upload-view">
+  <div class="container">
 
-      <div class="rectangle-preview">
-        <div class="rect-visual" id="rect-visual">
-          <span class="rect-label-w" id="label-width">—</span>
-          <span class="rect-label-h" id="label-height">—</span>
-        </div>
-      </div>
+    <div class="page-intro">
+      <h1>Riconcilia un mese Amazon</h1>
+      <p>Carica i file CSV delle transazioni e i PDF dei report di pagamento.<br>
+         L'app verificherà automaticamente che tutti i numeri quadrino.</p>
+    </div>
 
-      <form id="calc-form" onsubmit="handleCalculate(event)">
-        <div class="inputs-row">
-          <div class="form-group">
-            <label for="width">
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                <path d="M1 7h12M1 7l3-3M1 7l3 3M13 7l-3-3M13 7l-3 3" stroke="#6366f1" stroke-width="1.5" stroke-linecap="round"/>
-              </svg>
-              Larghezza
-            </label>
-            <div class="input-with-unit">
-              <input type="number" id="width" placeholder="0" min="0.01" step="any" required oninput="updatePreview()" />
-              <span class="unit">cm</span>
-            </div>
-          </div>
-          <div class="form-group">
-            <label for="height">
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                <path d="M7 1v12M7 1L4 4M7 1l3 3M7 13L4 10M7 13l3-3" stroke="#6366f1" stroke-width="1.5" stroke-linecap="round"/>
-              </svg>
-              Altezza
-            </label>
-            <div class="input-with-unit">
-              <input type="number" id="height" placeholder="0" min="0.01" step="any" required oninput="updatePreview()" />
-              <span class="unit">cm</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="unit-selector">
-          <label>Unità di misura:</label>
-          <div class="unit-buttons">
-            <button type="button" class="unit-btn active" onclick="setUnit(this, 'cm')">cm</button>
-            <button type="button" class="unit-btn" onclick="setUnit(this, 'm')">m</button>
-            <button type="button" class="unit-btn" onclick="setUnit(this, 'mm')">mm</button>
-            <button type="button" class="unit-btn" onclick="setUnit(this, 'in')">in</button>
-          </div>
-        </div>
-
-        <button type="submit" class="btn-primary btn-calc">Calcola Area</button>
-      </form>
-
-      <div id="result-box" class="result-box hidden">
-        <div class="result-label">Area del rettangolo</div>
-        <div class="result-value" id="result-value"></div>
-        <div class="result-details" id="result-details"></div>
+    <!-- Selettori mese/anno -->
+    <div class="card month-card">
+      <label class="month-label">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/>
+          <line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+        </svg>
+        Mese da riconciliare
+      </label>
+      <div class="month-selectors">
+        <select id="sel-month" onchange="updateLabels()">
+          <option value="1">Gennaio</option><option value="2">Febbraio</option>
+          <option value="3">Marzo</option><option value="4">Aprile</option>
+          <option value="5">Maggio</option><option value="6">Giugno</option>
+          <option value="7">Luglio</option><option value="8">Agosto</option>
+          <option value="9">Settembre</option><option value="10">Ottobre</option>
+          <option value="11">Novembre</option><option value="12">Dicembre</option>
+        </select>
+        <select id="sel-year" onchange="updateLabels()">
+        </select>
       </div>
     </div>
 
-    <div class="card history-card">
-      <h3>Calcoli recenti</h3>
-      <div id="history-list" class="history-list">
-        <p class="empty-history">Nessun calcolo ancora.</p>
+    <!-- Zona upload file -->
+    <form id="upload-form" onsubmit="submitForm(event)">
+
+      <!-- CSV row -->
+      <div class="upload-row upload-row-3">
+        <div class="drop-zone" id="zone-csv-prev" data-field="csv_prev" data-optional="true">
+          <div class="drop-icon">📄</div>
+          <div class="drop-label" id="label-csv-prev">CSV Dicembre</div>
+          <div class="drop-hint">opzionale · trascina o clicca</div>
+          <div class="drop-file-name" id="name-csv-prev"></div>
+          <input type="file" id="input-csv-prev" accept=".csv,.txt" hidden />
+        </div>
+
+        <div class="drop-zone required" id="zone-csv-target" data-field="csv_target">
+          <div class="drop-icon">📄</div>
+          <div class="drop-label" id="label-csv-target">CSV Gennaio</div>
+          <div class="drop-hint">obbligatorio · trascina o clicca</div>
+          <div class="drop-file-name" id="name-csv-target"></div>
+          <input type="file" id="input-csv-target" accept=".csv,.txt" hidden />
+        </div>
+
+        <div class="drop-zone" id="zone-csv-next" data-field="csv_next" data-optional="true">
+          <div class="drop-icon">📄</div>
+          <div class="drop-label" id="label-csv-next">CSV Febbraio</div>
+          <div class="drop-hint">opzionale · trascina o clicca</div>
+          <div class="drop-file-name" id="name-csv-next"></div>
+          <input type="file" id="input-csv-next" accept=".csv,.txt" hidden />
+        </div>
       </div>
-      <button class="btn-ghost" id="clear-history-btn" onclick="clearHistory()" style="display:none">
-        Cancella cronologia
+
+      <!-- PDF row -->
+      <div class="upload-row upload-row-2">
+        <div class="drop-zone required" id="zone-pdf-summary" data-field="pdf_summary">
+          <div class="drop-icon">📑</div>
+          <div class="drop-label">PDF Summary</div>
+          <div class="drop-hint">obbligatorio · Report → Pagamenti → Archivio Report</div>
+          <div class="drop-file-name" id="name-pdf-summary"></div>
+          <input type="file" id="input-pdf-summary" accept=".pdf" hidden />
+        </div>
+
+        <div class="drop-zone" id="zone-pdf-ads" data-field="pdf_ads" data-optional="true">
+          <div class="drop-icon">📑</div>
+          <div class="drop-label">PDF Fattura ADS</div>
+          <div class="drop-hint">opzionale · fattura pubblicità Amazon</div>
+          <div class="drop-file-name" id="name-pdf-ads"></div>
+          <input type="file" id="input-pdf-ads" accept=".pdf" hidden />
+        </div>
+      </div>
+
+      <!-- Errore e submit -->
+      <div id="upload-error" class="alert-error hidden"></div>
+
+      <div class="submit-row">
+        <button type="submit" class="btn-primary" id="btn-submit">
+          <span id="btn-text">▶ Avvia Riconciliazione</span>
+          <span id="btn-spinner" class="spinner hidden"></span>
+        </button>
+      </div>
+
+    </form>
+  </div>
+</main>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     VIEW 2 — RESULTS
+═══════════════════════════════════════════════════════════════════ -->
+<main id="results-view" class="hidden">
+  <div class="container">
+
+    <!-- Back -->
+    <button class="btn-back" onclick="showUpload()">
+      ← Nuova Riconciliazione
+    </button>
+
+    <!-- Status header -->
+    <div id="results-header" class="results-header">
+      <h1 id="results-title">Riconciliazione</h1>
+      <div id="results-badge" class="status-badge"></div>
+    </div>
+
+    <!-- Warnings -->
+    <div id="warnings-box" class="warnings-box hidden"></div>
+
+    <!-- 4 Check cards -->
+    <section class="section">
+      <h2 class="section-title">Verifica dei 4 indicatori</h2>
+      <div class="checks-grid">
+        <div class="check-card" id="card-ricavi">
+          <div class="check-icon" id="icon-ricavi"></div>
+          <div class="check-name">Ricavi</div>
+          <div class="check-row"><span class="check-lbl">CSV</span><span class="check-val" id="val-ricavi-csv">—</span></div>
+          <div class="check-row"><span class="check-lbl">PDF</span><span class="check-val" id="val-ricavi-pdf">—</span></div>
+          <div class="check-row check-delta"><span class="check-lbl">Δ</span><span class="check-val" id="val-ricavi-delta">—</span></div>
+        </div>
+
+        <div class="check-card" id="card-spese">
+          <div class="check-icon" id="icon-spese"></div>
+          <div class="check-name">Spese</div>
+          <div class="check-row"><span class="check-lbl">CSV</span><span class="check-val" id="val-spese-csv">—</span></div>
+          <div class="check-row"><span class="check-lbl">PDF</span><span class="check-val" id="val-spese-pdf">—</span></div>
+          <div class="check-row check-delta"><span class="check-lbl">Δ</span><span class="check-val" id="val-spese-delta">—</span></div>
+        </div>
+
+        <div class="check-card" id="card-trasferimenti">
+          <div class="check-icon" id="icon-trasferimenti"></div>
+          <div class="check-name">Pagamenti</div>
+          <div class="check-row"><span class="check-lbl">CSV</span><span class="check-val" id="val-trasf-csv">—</span></div>
+          <div class="check-row"><span class="check-lbl">PDF</span><span class="check-val" id="val-trasf-pdf">—</span></div>
+          <div class="check-row check-delta"><span class="check-lbl">Δ</span><span class="check-val" id="val-trasf-delta">—</span></div>
+          <div class="check-detail" id="detail-trasferimenti"></div>
+        </div>
+
+        <div class="check-card" id="card-ads">
+          <div class="check-icon" id="icon-ads"></div>
+          <div class="check-name">ADS</div>
+          <div class="check-row"><span class="check-lbl">CSV</span><span class="check-val" id="val-ads-csv">—</span></div>
+          <div class="check-row"><span class="check-lbl">PDF</span><span class="check-val" id="val-ads-pdf">—</span></div>
+          <div class="check-row check-delta"><span class="check-lbl">Δ</span><span class="check-val" id="val-ads-delta">—</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Spiegazione narrativa -->
+    <section class="section">
+      <div class="narrative-box" id="narrative-box"></div>
+    </section>
+
+    <!-- Saldo residuo -->
+    <section class="section">
+      <div class="saldo-box" id="saldo-box"></div>
+    </section>
+
+    <!-- Settlement periods -->
+    <section class="section">
+      <h2 class="section-title">Settlement Period (cicli di liquidazione)</h2>
+      <p class="section-desc">
+        I settlement period sono i cicli di pagamento Amazon (~15 giorni).
+        La tabella è informativa: mostra come i bonifici si collegano ai periodi di attività.
+      </p>
+      <div class="table-wrapper">
+        <table class="data-table" id="periods-table">
+          <thead>
+            <tr>
+              <th>Periodo</th>
+              <th>Inizio</th>
+              <th>Fine</th>
+              <th>Transazioni</th>
+              <th>Saldo periodo</th>
+              <th>Bonifico ricevuto</th>
+              <th>Data bonifico</th>
+              <th>Chiusura</th>
+              <th>Note</th>
+            </tr>
+          </thead>
+          <tbody id="periods-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Dettaglio transazioni (collassabile) -->
+    <section class="section">
+      <button class="collapsible-toggle" onclick="toggleTransactions(this)">
+        <span>▶</span> Dettaglio transazioni
       </button>
-    </div>
-  </div>
+      <div id="transactions-panel" class="collapsible-panel hidden">
+        <div class="table-filters">
+          <select id="filter-tipo" onchange="filterTransactions()">
+            <option value="">Tutti i tipi</option>
+          </select>
+          <select id="filter-period" onchange="filterTransactions()">
+            <option value="">Tutti i periodi</option>
+          </select>
+          <input type="text" id="filter-text" placeholder="Cerca..." oninput="filterTransactions()" />
+        </div>
+        <div class="table-wrapper">
+          <table class="data-table data-table-sm" id="transactions-table">
+            <thead>
+              <tr>
+                <th>Data</th><th>Tipo</th><th>N.Ordine</th><th>Descrizione</th>
+                <th class="num">Vendite</th><th class="num">Commissioni</th>
+                <th class="num">Altro</th><th class="num">Totale</th>
+              </tr>
+            </thead>
+            <tbody id="transactions-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
 
-  <script src="js/app.js"></script>
+  </div>
+</main>
+
+<script src="app.js"></script>
 </body>
 </html>
