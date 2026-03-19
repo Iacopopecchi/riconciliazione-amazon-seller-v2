@@ -1,0 +1,377 @@
+/**
+ * Amazon Seller Central Reconciliation — Netlify Function (Node.js)
+ * POST /api/reconcile  multipart/form-data → JSON
+ */
+
+const Busboy   = require('busboy');
+const { Readable } = require('stream');
+const pdfParse = require('pdf-parse');
+
+// ── Constants ────────────────────────────────────────────────────────────────
+
+const MESI_IT = {
+  gen: 1, feb: 2, mar: 3, apr: 4, mag: 5,  giu: 6,
+  lug: 7, ago: 8, set: 9, ott: 10, nov: 11, dic: 12,
+};
+const MESI_NOMI = {
+  1:'Gennaio', 2:'Febbraio', 3:'Marzo',    4:'Aprile',
+  5:'Maggio',  6:'Giugno',   7:'Luglio',   8:'Agosto',
+  9:'Settembre', 10:'Ottobre', 11:'Novembre', 12:'Dicembre',
+};
+const NUMERIC_COLS = [
+  'Vendite', 'imposta sulle vendite dei prodotti',
+  'Commissioni di vendita', 'Altri costi relativi alle transazioni',
+  'Altro', 'totale',
+];
+const CORS = {
+  'Access-Control-Allow-Origin':  '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
+
+// ── Handler ──────────────────────────────────────────────────────────────────
+
+exports.handler = async (event) => {
+  if (event.httpMethod === 'OPTIONS') {
+    return { statusCode: 204, headers: CORS, body: '' };
+  }
+
+  try {
+    const files = await parseMultipart(event);
+
+    if (!files.csv_target) return errResp('CSV del mese target obbligatorio non caricato.');
+    if (!files.pdf_summary) return errResp('PDF Summary obbligatorio non caricato.');
+
+    // Parse CSV files
+    const targetRows = parseAmazonCsv(files.csv_target);
+    const prevRows   = files.csv_prev  ? parseAmazonCsv(files.csv_prev)  : null;
+    const nextRows   = files.csv_next  ? parseAmazonCsv(files.csv_next)  : null;
+
+    // Parse PDFs
+    const pdfSum = await parsePdfSummary(files.pdf_summary);
+    if (!pdfSum) {
+      return errResp(
+        'Impossibile leggere il PDF Summary. ' +
+        'Assicurati che sia il file scaricato da Report → Pagamenti → Archivio Report.'
+      );
+    }
+    const pdfAdsEur = files.pdf_ads ? await parsePdfAds(files.pdf_ads) : null;
+
+    // Compute
+    const meseTarget = getMonthLabel(targetRows);
+    const checks     = computeChecks(targetRows, pdfSum, pdfAdsEur);
+    const periods    = computePeriods(targetRows, prevRows, nextRows);
+
+    const ricavi  = checks.ricavi.csv;
+    const spese   = checks.spese.csv;
+    const trasf   = checks.trasferimenti.csv;
+    const imposte = pdfSum.imposte || 0;
+    const saldo   = round2(ricavi + imposte + spese + trasf);
+
+    const passList = [checks.ricavi.pass, checks.spese.pass, checks.trasferimenti.pass];
+    if (checks.ads.disponibile) passList.push(checks.ads.pass);
+    const statusGlobale = passList.some(p => p === false) ? 'ATTENZIONE' : 'OK';
+
+    const openPeriods = periods.filter(p => p.transfer_amount === null);
+
+    const warnings = [];
+    if (!files.csv_prev && periods.length) {
+      const first = periods[0];
+      if (first.note || first.transfer_amount === null) {
+        warnings.push(
+          `Carica anche il CSV del mese precedente per verificare ` +
+          `il settlement period ${first.periodo_id}`
+        );
+      }
+    }
+
+    const txCols = [
+      '_dateStr','Tipo','Numero pagamento','Numero ordine','Descrizione',
+      'Vendite','Commissioni di vendita','Altri costi relativi alle transazioni','Altro','totale',
+    ];
+    const transazioni = targetRows.map(row => {
+      const rec = {};
+      txCols.forEach(c => { rec[c === '_dateStr' ? 'Data' : c] = row[c] ?? ''; });
+      return rec;
+    });
+
+    return jsonResp({
+      mese_target:    meseTarget,
+      status_globale: statusGlobale,
+      warnings,
+      checks,
+      saldo_residuo: {
+        importo:       saldo,
+        ricavi:        round2(ricavi),
+        imposte:       round2(imposte),
+        spese:         round2(spese),
+        trasferimenti: round2(trasf),
+        spiegazione:   buildSaldoExp(saldo, openPeriods),
+      },
+      settlement_periods: periods,
+      pdf_summary_raw:    pdfSum,
+      transazioni,
+    });
+
+  } catch (err) {
+    return jsonResp({ error: err.message, stack: err.stack }, 500);
+  }
+};
+
+// ── Multipart parsing ────────────────────────────────────────────────────────
+
+function parseMultipart(event) {
+  return new Promise((resolve, reject) => {
+    const hdrs = {};
+    Object.entries(event.headers || {}).forEach(([k, v]) => { hdrs[k.toLowerCase()] = v; });
+
+    const bb = Busboy({ headers: hdrs });
+    const files = {};
+
+    bb.on('file', (name, file) => {
+      const chunks = [];
+      file.on('data', c => chunks.push(c));
+      file.on('end',  () => { files[name] = Buffer.concat(chunks); });
+    });
+    bb.on('finish', () => resolve(files));
+    bb.on('error',  reject);
+
+    const body = event.isBase64Encoded
+      ? Buffer.from(event.body, 'base64')
+      : Buffer.from(event.body || '', 'binary');
+
+    Readable.from(body).pipe(bb);
+  });
+}
+
+// ── CSV parsing ──────────────────────────────────────────────────────────────
+
+function parseItNum(val) {
+  const s = String(val ?? '').trim();
+  if (!s || s === '-' || s === '—') return 0;
+  return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0;
+}
+
+function parseItDate(s) {
+  if (!s || !s.trim()) return null;
+  s = s.trim();
+  // "14 gen 2026"
+  const parts = s.split(/\s+/);
+  if (parts.length === 3) {
+    const m = MESI_IT[parts[1].toLowerCase().slice(0, 3)];
+    if (m) return new Date(+parts[2], m - 1, +parts[0]);
+  }
+  // "14/01/2026"
+  const dmy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (dmy) return new Date(+dmy[3], +dmy[2] - 1, +dmy[1]);
+  return null;
+}
+
+function fmtDate(d) {
+  if (!d) return '';
+  return [
+    String(d.getDate()).padStart(2,'0'),
+    String(d.getMonth()+1).padStart(2,'0'),
+    d.getFullYear(),
+  ].join('/');
+}
+
+function parseAmazonCsv(buf) {
+  let text = buf.toString('utf-8');
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1); // Remove BOM
+
+  const lines = text.split(/\r?\n/);
+  if (lines.length < 9) throw new Error(`CSV troppo corto (${lines.length} righe).`);
+
+  const hLine = lines[7];
+  const sep   = hLine.includes('\t') ? '\t' : ',';
+  const headers = hLine.split(sep).map(h => h.trim());
+
+  const dateCol = headers.find(h => h.toLowerCase() === 'data' || h.toLowerCase() === 'date');
+  const rows = [];
+
+  for (let i = 8; i < lines.length; i++) {
+    if (!lines[i].trim()) continue;
+    const vals = lines[i].split(sep);
+    const row  = {};
+    headers.forEach((h, j) => { row[h] = (vals[j] ?? '').trim(); });
+
+    NUMERIC_COLS.forEach(c => { row[c] = c in row ? parseItNum(row[c]) : 0; });
+
+    if (dateCol) {
+      row._date    = parseItDate(row[dateCol]);
+      row._dateStr = row[dateCol];
+    }
+    if ('Numero pagamento' in row) {
+      row['Numero pagamento'] = String(row['Numero pagamento']).split('.')[0].trim();
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+
+// ── PDF parsing ──────────────────────────────────────────────────────────────
+
+async function parsePdfSummary(buf) {
+  const { text } = await pdfParse(buf);
+  if (!text.trim()) return null;
+
+  const keywords = {
+    ricavi:        ['ricavi', 'vendite.*accrediti'],
+    spese:         ['spese', 'costi.*inclusivi'],
+    imposte:       ['imposte.*nette', 'imposte'],
+    trasferimenti: ['trasferimenti', 'versamenti.*prelievi'],
+  };
+
+  const result = {};
+  const lines  = text.split('\n');
+
+  for (const [key, kwList] of Object.entries(keywords)) {
+    for (const kw of kwList) {
+      const re = new RegExp(kw, 'i');
+      for (const line of lines) {
+        if (re.test(line)) {
+          const nums = line.match(/[+-]?\s*[\d.,]+/g) || [];
+          for (let i = nums.length - 1; i >= 0; i--) {
+            const n = nums[i].replace(/\s/g, '');
+            if (n.includes(',') || n.length > 3) { result[key] = parseItNum(n); break; }
+          }
+        }
+        if (key in result) break;
+      }
+      if (key in result) break;
+    }
+  }
+
+  ['ricavi','spese','imposte','trasferimenti'].forEach(k => { result[k] ??= null; });
+  return Object.values(result).every(v => v === null) ? null : result;
+}
+
+async function parsePdfAds(buf) {
+  const { text } = await pdfParse(buf);
+  const patterns = [
+    /Italy\s+Subtotal[^\n]*?[\d,]*\.?\d+\s+USD\s*\/\s*([\d,]+\.?\d*)\s+EUR/i,
+    /Italy[^\n]*Total[^\n]*?[\d,]*\.?\d+\s+USD\s*\/\s*([\d,]+\.?\d*)\s+EUR/i,
+    /Total\s+Invoice\s+Amount[^\n]*?([\d,]+\.?\d*)\s+EUR/i,
+  ];
+  for (const pat of patterns) {
+    const m = text.match(pat);
+    if (m) { const v = parseFloat(m[1].replace(/,/g,'')); if (!isNaN(v)) return -Math.abs(v); }
+  }
+  return null;
+}
+
+// ── 4 Checks ─────────────────────────────────────────────────────────────────
+
+function computeChecks(rows, pdfSum, pdfAdsEur) {
+  const nonTr = rows.filter(r => r['Tipo'] !== 'Trasferimento');
+  const trRows = rows.filter(r => r['Tipo'] === 'Trasferimento');
+
+  const ricaviCsv = round2(sumCol(rows, 'Vendite'));
+  const speseCsv  = round2(
+    sumCol(rows,  'Commissioni di vendita') +
+    sumCol(rows,  'Altri costi relativi alle transazioni') +
+    sumCol(nonTr, 'Altro')
+  );
+  const trasfCsv  = round2(sumCol(trRows, 'totale'));
+  const adsRows   = rows.filter(r => String(r['Descrizione']||'').trim() === 'Costo della pubblicità');
+  const adsCsv    = round2(sumCol(adsRows, 'totale'));
+
+  const d1 = pdfSum.ricavi        !== null ? round2(ricaviCsv - pdfSum.ricavi)        : null;
+  const d2 = pdfSum.spese         !== null ? round2(speseCsv  - pdfSum.spese)         : null;
+  const d3 = pdfSum.trasferimenti !== null ? round2(trasfCsv  - pdfSum.trasferimenti) : null;
+  const d4 = pdfAdsEur            !== null ? round2(adsCsv    - pdfAdsEur)            : null;
+
+  return {
+    ricavi:        { csv: ricaviCsv, pdf: pdfSum.ricavi,        differenza: d1, pass: d1 !== null ? Math.abs(d1) <= 0.05 : false },
+    spese:         { csv: speseCsv,  pdf: pdfSum.spese,         differenza: d2, pass: d2 !== null ? Math.abs(d2) <= 0.05 : false },
+    trasferimenti: {
+      csv: trasfCsv, pdf: pdfSum.trasferimenti, differenza: d3,
+      pass: d3 !== null ? Math.abs(d3) <= 0.05 : false,
+      dettaglio: trRows.map(r => ({ data: r._dateStr || '', importo: round2(r.totale || 0) })),
+    },
+    ads: {
+      csv: adsCsv, pdf: pdfAdsEur, differenza: d4,
+      pass: d4 !== null ? Math.abs(d4) <= 1.00 : null,
+      disponibile: pdfAdsEur !== null,
+    },
+  };
+}
+
+// ── Settlement periods ────────────────────────────────────────────────────────
+
+function computePeriods(targetRows, prevRows, nextRows) {
+  const all = [
+    ...(prevRows  || []).map(r => ({ ...r, _src: 'prev'   })),
+    ...targetRows.map(r => ({ ...r, _src: 'target' })),
+    ...(nextRows  || []).map(r => ({ ...r, _src: 'next'   })),
+  ];
+
+  if (!all.length || !('Numero pagamento' in all[0])) return [];
+
+  const map = {};
+  for (const row of all) {
+    const pid = String(row['Numero pagamento'] || '').trim();
+    if (!pid || pid === 'nan' || pid === '0') continue;
+
+    const isTr = String(row['Tipo'] || '').trim() === 'Trasferimento';
+    if (!map[pid]) {
+      map[pid] = { periodo_id: pid, dates: [], tx_sum: 0, transfer_amount: null, transfer_date: null, n_transazioni: 0, first_src: row._src };
+    }
+    if (row._date) map[pid].dates.push(row._date);
+    if (isTr) { map[pid].transfer_amount = round2(row.totale || 0); map[pid].transfer_date = row._date; }
+    else       { map[pid].tx_sum = round2(map[pid].tx_sum + (row.totale || 0)); map[pid].n_transazioni++; }
+  }
+
+  return Object.values(map)
+    .sort((a, b) => {
+      const aMin = a.dates.length ? Math.min(...a.dates.map(d => d.getTime())) : Infinity;
+      const bMin = b.dates.length ? Math.min(...b.dates.map(d => d.getTime())) : Infinity;
+      return aMin - bMin;
+    })
+    .map(p => {
+      const ds   = p.dates;
+      const dMin = ds.length ? new Date(Math.min(...ds.map(d => d.getTime()))) : null;
+      const dMax = ds.length ? new Date(Math.max(...ds.map(d => d.getTime()))) : null;
+      const tx   = round2(p.tx_sum);
+      const ta   = p.transfer_amount;
+      return {
+        periodo_id:      p.periodo_id,
+        data_inizio:     fmtDate(dMin),
+        data_fine:       fmtDate(dMax),
+        n_transazioni:   p.n_transazioni,
+        tx_sum:          tx,
+        transfer_amount: ta,
+        transfer_date:   ta !== null && p.transfer_date ? fmtDate(p.transfer_date) : '',
+        differenza:      ta !== null ? round2(tx + ta) : null,
+        note:            p.first_src === 'prev' ? 'Aperto nel mese precedente' : ta === null ? 'Si chiude nel mese successivo' : '',
+      };
+    });
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function sumCol(rows, col) { return rows.reduce((acc, r) => acc + (r[col] || 0), 0); }
+function round2(v)         { return Math.round(v * 100) / 100; }
+
+function getMonthLabel(rows) {
+  const counts = {};
+  for (const r of rows) {
+    if (r._date) { const k = `${r._date.getFullYear()}-${r._date.getMonth()+1}`; counts[k] = (counts[k]||0)+1; }
+  }
+  if (!Object.keys(counts).length) return 'Mese target';
+  const [year, month] = Object.entries(counts).sort((a,b)=>b[1]-a[1])[0][0].split('-').map(Number);
+  return `${MESI_NOMI[month]} ${year}`;
+}
+
+function buildSaldoExp(saldo, open) {
+  if (Math.abs(saldo) < 0.10) return 'Saldo su conto Amazon sostanzialmente zero: tutti i pagamenti del mese sono stati trasferiti.';
+  let s = `A fine mese rimangono ${saldo.toFixed(2)}€ ancora sul conto Amazon (non ancora trasferiti). Questo è normale.`;
+  for (const p of open) s += ` Il periodo ${p.periodo_id} si chiude il mese successivo: il bonifico di ${p.tx_sum.toFixed(2)}€ è atteso.`;
+  return s;
+}
+
+function jsonResp(data, status = 200) {
+  return { statusCode: status, headers: { ...CORS, 'Content-Type': 'application/json; charset=utf-8' }, body: JSON.stringify(data) };
+}
+function errResp(msg, status = 400) { return jsonResp({ error: msg }, status); }
